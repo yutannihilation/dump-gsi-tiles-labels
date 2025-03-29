@@ -21,6 +21,11 @@ pub(crate) fn decompress(
     length: usize,
     compression: &PMTilesCompression,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
+    // leaf dir might not exist
+    if length == 0 {
+        return Ok(vec![]);
+    }
+
     let mut raw_bytes = vec![0u8; length];
     file.seek(std::io::SeekFrom::Start(offset))?;
     file.read_exact(&mut raw_bytes)?;
