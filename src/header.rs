@@ -61,7 +61,7 @@ pub struct PMTilesPosition {
     pub(crate) lat: f32,
 }
 
-pub fn parse_pmtiles(input: &[u8]) -> IResult<&[u8], PMTilesHeaderV3> {
+pub fn parse_header(input: &[u8]) -> IResult<&[u8], PMTilesHeaderV3> {
     let (input, _) = tag("PMTiles")(input)?; // magic number
     let (input, _) = tag([3u8].as_slice())(input)?; // version number
     let (input, root_directory_offset) = le_u64(input)?;
@@ -167,7 +167,7 @@ mod tests {
     #[test]
     fn test_parse_header() {
         let data = include_bytes!("./test/test_fixture_1.pmtiles");
-        let (remaining, result) = parse_pmtiles(&data[..127]).expect("Failed to parse");
+        let (remaining, result) = parse_header(&data[..127]).expect("Failed to parse");
         assert!(remaining.is_empty());
         assert_eq!(result.root_directory_offset, 127);
         assert_eq!(result.root_directory_length, 25);
