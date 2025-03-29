@@ -1,10 +1,8 @@
 use std::error::Error;
-use std::io::{Read, Seek};
+use std::io::Read as _;
 
 use clap::Parser;
 use directory::parse_root_directory;
-use flate2::read::GzDecoder;
-use nom::AsBytes;
 
 mod directory;
 mod header;
@@ -27,18 +25,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     file.read_exact(&mut header_data)?;
     let (rest, header) = header::parse_header(&header_data).expect("Failed to parse haeder");
     println!("{header:#?}");
-
     debug_assert!(rest.is_empty());
 
     // read root dir
 
-    let mut root_dir_raw = vec![0u8; header.root_directory_length as usize];
-    file.seek(std::io::SeekFrom::Start(header.root_directory_offset))?;
-    file.read_exact(&mut root_dir_raw)?;
-
-    let mut root_dir_decoded = vec![];
-    let mut decoded_reader = GzDecoder::new(root_dir_raw.as_bytes());
-    decoded_reader.read_to_end(&mut root_dir_decoded)?;
+    let root_dir_decoded = util::decompress(
+        &mut file,
+        header.root_directory_offset,
+        header.root_directory_length as usize,
+        &header.internal_compression,
+    )?;
 
     let (rest, entries) =
         parse_root_directory(&root_dir_decoded).expect("Failed to parse root directory");
@@ -47,12 +43,25 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     debug_assert!(rest.is_empty());
 
-    // for b in root_dir_decoded {
-    //     println!("{b:08b} ({b})");
-    // }
+    // read metadata
 
-    // let (remaining, header) = header::parse_pmtiles(&root_dir_data).expect("Failed to parse");
-    // println!("{header:#?}");
+    let metadata_decoded = util::decompress(
+        &mut file,
+        header.metadata_offset,
+        header.metadata_length as usize,
+        &header.internal_compression,
+    )?;
+
+    println!("metadata: {}", String::from_utf8(metadata_decoded)?);
+
+    // read leaf dir
+
+    let root_dir_decoded = util::decompress(
+        &mut file,
+        header.root_directory_offset,
+        header.root_directory_length as usize,
+        &header.internal_compression,
+    )?;
 
     Ok(())
 }
