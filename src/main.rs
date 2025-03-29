@@ -4,11 +4,16 @@ use std::io::Read as _;
 use clap::{Parser, Subcommand};
 use directory::parse_directory;
 use header::PMTilesHeaderV3;
+use prost::Message;
 
 mod directory;
 mod header;
 mod util;
 mod varint;
+
+mod mvt {
+    include!(concat!(env!("OUT_DIR"), "/vector_tile.rs"));
+}
 
 #[derive(Parser, Debug)]
 struct Cli {
@@ -28,6 +33,11 @@ enum Commands {
         file: std::path::PathBuf,
         #[arg(long, default_value_t = 10)]
         limit: usize,
+    },
+    Tile {
+        file: std::path::PathBuf,
+        offset: u64,
+        length: usize,
     },
 }
 
@@ -94,12 +104,32 @@ fn list_entries(
     Ok(())
 }
 
+fn parse_single_tile(
+    file: &mut std::fs::File,
+    header: &PMTilesHeaderV3,
+    offset: u64,
+    length: usize,
+) -> Result<(), Box<dyn Error>> {
+    let tile_decoded = util::decompress(
+        file,
+        header.tile_data_offset + offset,
+        length,
+        &header.tile_compression,
+    )?;
+    let tile = mvt::Tile::decode(tile_decoded.as_slice())?;
+
+    println!("{tile:#?}");
+
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Cli::parse();
     let mut file = match &args.command {
         Commands::ShowHeader { file } => std::fs::File::open(file)?,
         Commands::ShowMetadata { file } => std::fs::File::open(file)?,
         Commands::List { file, .. } => std::fs::File::open(file)?,
+        Commands::Tile { file, .. } => std::fs::File::open(file)?,
     };
 
     // read header
@@ -113,6 +143,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         Commands::ShowHeader { .. } => show_header(&header),
         Commands::ShowMetadata { .. } => show_metadata(&mut file, &header)?,
         Commands::List { limit, .. } => list_entries(&mut file, &header, *limit)?,
+        Commands::Tile { offset, length, .. } => {
+            parse_single_tile(&mut file, &header, *offset, *length)?
+        }
     };
 
     Ok(())

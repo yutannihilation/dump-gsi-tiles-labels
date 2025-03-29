@@ -18,7 +18,7 @@ pub(crate) fn parse_directory(input: &[u8]) -> IResult<&[u8], Vec<PMTilesEntry>>
     let (input, lengths) = count(parse_varint, entry_count).parse(input)?;
     let (input, offsets) = count(parse_varint, entry_count).parse(input)?;
 
-    let mut result = Vec::with_capacity(entry_count);
+    let mut result = vec![];
     let mut last_tile_id = 0;
     let mut last_offset = 0;
 
