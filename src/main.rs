@@ -38,6 +38,8 @@ enum Commands {
         file: std::path::PathBuf,
         offset: u64,
         length: usize,
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
     },
 }
 
@@ -104,11 +106,12 @@ fn list_entries(
     Ok(())
 }
 
-fn parse_single_tile(
+fn dump_single_tile(
     file: &mut std::fs::File,
     header: &PMTilesHeaderV3,
     offset: u64,
     length: usize,
+    limit: usize,
 ) -> Result<(), Box<dyn Error>> {
     let tile_decoded = util::decompress(
         file,
@@ -118,7 +121,46 @@ fn parse_single_tile(
     )?;
     let tile = mvt::Tile::decode(tile_decoded.as_slice())?;
 
-    println!("{tile:#?}");
+    for layer in tile.layers.iter().take(limit) {
+        println!("---------------------------------------------------");
+
+        println!("name: {}", layer.name);
+
+        println!("features:");
+        for feature in layer.features.iter().take(limit) {
+            println!("  - id: {:?}, type: {:?}", feature.id, feature.r#type());
+        }
+        if layer.features.len() > limit {
+            println!("    ...");
+        }
+
+        println!("keys: {:?}", layer.keys);
+
+        print!("values: [");
+        for value in layer.values.iter().take(limit) {
+            if let Some(v) = value.bool_value {
+                print!("{v}, ");
+            } else if let Some(v) = value.double_value {
+                print!("{v}, ");
+            } else if let Some(v) = value.float_value {
+                print!("{v}, ");
+            } else if let Some(v) = value.int_value {
+                print!("{v}, ");
+            } else if let Some(v) = value.sint_value {
+                print!("{v}, ");
+            } else if let Some(v) = value.uint_value {
+                print!("{v}, ");
+            } else if let Some(v) = &value.string_value {
+                print!(r#""{v}", "#);
+            } else {
+                print!("(null)")
+            }
+        }
+        if layer.values.len() > limit {
+            print!("...");
+        }
+        println!("]");
+    }
 
     Ok(())
 }
@@ -143,9 +185,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         Commands::ShowHeader { .. } => show_header(&header),
         Commands::ShowMetadata { .. } => show_metadata(&mut file, &header)?,
         Commands::List { limit, .. } => list_entries(&mut file, &header, *limit)?,
-        Commands::Tile { offset, length, .. } => {
-            parse_single_tile(&mut file, &header, *offset, *length)?
-        }
+        Commands::Tile {
+            offset,
+            length,
+            limit,
+            ..
+        } => dump_single_tile(&mut file, &header, *offset, *length, *limit)?,
     };
 
     Ok(())
