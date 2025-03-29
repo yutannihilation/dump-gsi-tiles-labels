@@ -16,6 +16,11 @@ jobs:
   
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-      
+
+      - name: install protoc
+        uses: taiki-e/install-action@v2
+        with:
+          tool: protoc
+
       - name: Build
         run: cargo test
