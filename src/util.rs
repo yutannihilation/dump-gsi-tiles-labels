@@ -6,7 +6,7 @@ use std::{
 use flate2::read::GzDecoder;
 use nom::error::ErrorKind;
 
-use crate::header::PMTilesCompression;
+use crate::{header::PMTilesCompression, mvt};
 
 pub(crate) fn nom_error<T>(input: &[u8]) -> Result<(&[u8], T), nom::Err<nom::error::Error<&[u8]>>> {
     Err(nom::Err::Error(nom::error::Error::new(
@@ -40,4 +40,24 @@ pub(crate) fn decompress(
     };
     decoder.read_to_end(&mut decoded)?;
     Ok(decoded)
+}
+
+pub(crate) fn print_tile_value(value: &mvt::tile::Value) {
+    if let Some(v) = value.bool_value {
+        print!("{v}, ");
+    } else if let Some(v) = value.double_value {
+        print!("{v}, ");
+    } else if let Some(v) = value.float_value {
+        print!("{v}, ");
+    } else if let Some(v) = value.int_value {
+        print!("{v}, ");
+    } else if let Some(v) = value.sint_value {
+        print!("{v}, ");
+    } else if let Some(v) = value.uint_value {
+        print!("{v}, ");
+    } else if let Some(v) = &value.string_value {
+        print!(r#""{v}", "#);
+    } else {
+        print!("(null)")
+    }
 }

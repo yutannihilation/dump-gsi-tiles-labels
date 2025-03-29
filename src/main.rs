@@ -60,7 +60,7 @@ fn show_metadata(file: &mut std::fs::File, header: &PMTilesHeaderV3) -> Result<(
         &header.internal_compression,
     )?;
 
-    println!("metadata: {}", String::from_utf8(metadata_decoded)?);
+    println!("{}", String::from_utf8(metadata_decoded)?);
     Ok(())
 }
 
@@ -118,6 +118,11 @@ fn dump_single_tile(
     length: usize,
     limit: usize,
 ) -> Result<(), Box<dyn Error>> {
+    if !matches!(header.tile_type, header::PMTilesTileType::Mvt) {
+        println!("Unsupported tile type: {:?}", header.tile_type);
+        return Ok(());
+    }
+
     let tile_decoded = util::decompress(
         file,
         header.tile_data_offset + offset,
@@ -143,23 +148,7 @@ fn dump_single_tile(
 
         print!("values: [");
         for value in layer.values.iter().take(limit) {
-            if let Some(v) = value.bool_value {
-                print!("{v}, ");
-            } else if let Some(v) = value.double_value {
-                print!("{v}, ");
-            } else if let Some(v) = value.float_value {
-                print!("{v}, ");
-            } else if let Some(v) = value.int_value {
-                print!("{v}, ");
-            } else if let Some(v) = value.sint_value {
-                print!("{v}, ");
-            } else if let Some(v) = value.uint_value {
-                print!("{v}, ");
-            } else if let Some(v) = &value.string_value {
-                print!(r#""{v}", "#);
-            } else {
-                print!("(null)")
-            }
+            util::print_tile_value(value);
         }
         if layer.values.len() > limit {
             print!("...");
@@ -175,6 +164,8 @@ fn dump_text(
     header: &PMTilesHeaderV3,
     limit: Option<usize>,
 ) -> Result<(), Box<dyn Error>> {
+    let limit = limit.unwrap_or(usize::MAX);
+
     let root_dir_decoded = util::decompress(
         file,
         header.root_directory_offset,
@@ -188,7 +179,7 @@ fn dump_text(
 
     let mut result: HashMap<String, usize> = HashMap::new();
 
-    for e in &entries {
+    for e in entries.iter().take(limit) {
         if e.is_tile {
             let tile_decoded = util::decompress(
                 file,
@@ -227,7 +218,13 @@ fn dump_text(
         }
     }
 
-    println!("{result:#?}");
+    // show result
+
+    let mut sorted: Vec<(String, usize)> = result.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1)); // reverse sort
+    for (k, v) in &sorted {
+        println!("{k}: {v} times");
+    }
 
     Ok(())
 }
