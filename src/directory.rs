@@ -51,6 +51,7 @@ pub(crate) fn parse_root_directory(input: &[u8]) -> IResult<&[u8], Vec<PMTilesEn
 #[cfg(test)]
 mod tests {
     use flate2::read::GzDecoder;
+    use std::io::Read;
 
     use super::*;
 
@@ -64,9 +65,10 @@ mod tests {
 
         let (remaining, result) = parse_root_directory(&root_dir_decoded).expect("Failed to parse");
         assert!(remaining.is_empty());
-        assert_eq!(result.tile_ids, [0]);
-        assert_eq!(result.run_lengths, [1]);
-        assert_eq!(result.lengths, [69]);
-        assert_eq!(result.offsets, [1]);
+        assert_eq!(result.len(), 1);
+
+        assert_eq!(result[0].tile_id, 0);
+        assert_eq!(result[0].offset, 0);
+        assert_eq!(result[0].length, 69);
     }
 }
