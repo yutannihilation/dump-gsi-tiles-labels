@@ -18,29 +18,31 @@ pub(crate) fn parse_root_directory(input: &[u8]) -> IResult<&[u8], Vec<PMTilesEn
     let (input, offsets) = count(parse_varint, entry_count).parse(input)?;
 
     let mut result = Vec::with_capacity(entry_count);
-    let mut tile_id = 0;
+    let mut last_tile_id = 0;
+    let mut last_offset = 0;
 
     for i in 0..entry_count {
-        tile_id += tile_ids[i];
+        last_tile_id += tile_ids[i];
         let run_length = run_lengths[i];
         let length = lengths[i];
-        let offset = offsets[i];
+        last_offset = if offsets[i] == 0 && i > 0 {
+            last_offset + lengths[i - 1]
+        } else {
+            offsets[i] - 1
+        };
 
         // TODO: handle leaf directory
         if run_length == 0 {
-            println!("tile_id: {}", tile_id);
             continue;
         }
 
         for j in 0..run_length {
             result.push(PMTilesEntry {
-                tile_id: tile_id + j,
-                offset,
+                tile_id: last_tile_id + j,
+                offset: last_offset,
                 length,
             });
         }
-
-        tile_id += run_length - 1;
     }
 
     Ok((input, result))
