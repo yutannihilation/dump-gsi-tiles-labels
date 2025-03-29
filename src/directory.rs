@@ -4,12 +4,13 @@ use crate::varint::parse_varint;
 
 #[derive(Debug, PartialEq)]
 pub struct PMTilesEntry {
-    tile_id: u64,
-    offset: u64,
-    length: u64,
+    pub tile_id: u64,
+    pub offset: u64,
+    pub length: u64,
+    pub is_dir: bool,
 }
 
-pub(crate) fn parse_root_directory(input: &[u8]) -> IResult<&[u8], Vec<PMTilesEntry>> {
+pub(crate) fn parse_directory(input: &[u8]) -> IResult<&[u8], Vec<PMTilesEntry>> {
     let (input, entry_count) = parse_varint(input)?;
     let entry_count = entry_count as usize;
     let (input, tile_ids) = count(parse_varint, entry_count).parse(input)?;
@@ -31,17 +32,22 @@ pub(crate) fn parse_root_directory(input: &[u8]) -> IResult<&[u8], Vec<PMTilesEn
             offsets[i] - 1
         };
 
-        // TODO: handle leaf directory
         if run_length == 0 {
-            continue;
-        }
-
-        for j in 0..run_length {
             result.push(PMTilesEntry {
-                tile_id: last_tile_id + j,
+                tile_id: last_tile_id,
                 offset: last_offset,
                 length,
+                is_dir: true,
             });
+        } else {
+            for j in 0..run_length {
+                result.push(PMTilesEntry {
+                    tile_id: last_tile_id + j,
+                    offset: last_offset,
+                    length,
+                    is_dir: false,
+                });
+            }
         }
     }
 
@@ -63,7 +69,7 @@ mod tests {
         let mut decoded_reader = GzDecoder::new(&data[127..152]);
         decoded_reader.read_to_end(&mut root_dir_decoded).unwrap();
 
-        let (remaining, result) = parse_root_directory(&root_dir_decoded).expect("Failed to parse");
+        let (remaining, result) = parse_directory(&root_dir_decoded).expect("Failed to parse");
         assert!(remaining.is_empty());
         assert_eq!(result.len(), 1);
 
