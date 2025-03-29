@@ -10,7 +10,7 @@ pub(crate) fn parse_varint(input: &[u8]) -> IResult<&[u8], u64> {
 
     let mut i = cont_bytes.len();
     let mut result = (last_byte[0] as u64) << (7 * i);
-    for b in cont_bytes {
+    for b in cont_bytes.iter().rev() {
         i -= 1;
         let shift = 7 * i;
         result += ((b ^ MSB_MASK) as u64) << shift;
@@ -34,5 +34,10 @@ mod tests {
         let res = parse_varint(&b2).unwrap();
         assert!(res.0.is_empty());
         assert_eq!(res.1, 150);
+
+        let b3 = [0b11011110, 0b11000001, 0b00011010];
+        let res = parse_varint(&b3).unwrap();
+        assert!(res.0.is_empty());
+        assert_eq!(res.1, 434398);
     }
 }
