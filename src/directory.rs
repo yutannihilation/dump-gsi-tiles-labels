@@ -7,7 +7,7 @@ pub struct PMTilesEntry {
     pub tile_id: u64,
     pub offset: u64,
     pub length: u64,
-    pub is_dir: bool,
+    pub is_tile: bool,
 }
 
 pub(crate) fn parse_directory(input: &[u8]) -> IResult<&[u8], Vec<PMTilesEntry>> {
@@ -37,7 +37,7 @@ pub(crate) fn parse_directory(input: &[u8]) -> IResult<&[u8], Vec<PMTilesEntry>>
                 tile_id: last_tile_id,
                 offset: last_offset,
                 length,
-                is_dir: true,
+                is_tile: false,
             });
         } else {
             for j in 0..run_length {
@@ -45,7 +45,7 @@ pub(crate) fn parse_directory(input: &[u8]) -> IResult<&[u8], Vec<PMTilesEntry>>
                     tile_id: last_tile_id + j,
                     offset: last_offset,
                     length,
-                    is_dir: false,
+                    is_tile: true,
                 });
             }
         }

@@ -66,7 +66,7 @@ fn list_entries(
     for e in entries.iter().take(limit) {
         println!("{e:?}");
 
-        if e.is_dir {
+        if !e.is_tile {
             let leaf_dir_decoded = util::decompress(
                 file,
                 header.leaf_directories_offset + e.offset,
