@@ -6,6 +6,34 @@
 
 ## Usages
 
+### Dump characters
+
+```sh
+./dump-pmtiles-labels char -o char-stats.csv /path/to/optimal_bvmap-v1.pmtiles
+
+cat char-stats.csv
+```
+```
+"text","count"
+"m",5519671
+"5",4485228
+"3",4035500
+"満",3440669
+"未",3438687
+```
+
+### Dump texts
+
+```sh
+./dump-pmtiles-labels text -o text-stats.csv /path/to/optimal_bvmap-v1.pmtiles
+
+cat text-stats.csv
+```
+```
+
+```
+
+
 ### Show header
 
 ```sh
