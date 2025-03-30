@@ -9,7 +9,7 @@
 ### Show header
 
 ```sh
-./dump-gsi-tiles-labels show-header /path/to/optimal_bvmap-v1.pmtiles
+./dump-pmtiles-labels show-header /path/to/optimal_bvmap-v1.pmtiles
 ```
 ```
 PMTilesHeaderV3 {
@@ -49,7 +49,7 @@ PMTilesHeaderV3 {
 ### Show metadata
 
 ```sh
-./dump-gsi-tiles-labels show-metadata /path/to/optimal_bvmap-v1.pmtiles
+./dump-pmtiles-labels show-metadata /path/to/optimal_bvmap-v1.pmtiles
 ```
 ```
 metadata: {"vector_layers":[{"id":"boundaries", ...
@@ -58,7 +58,7 @@ metadata: {"vector_layers":[{"id":"boundaries", ...
 ### List entries
 
 ```sh
-./dump-gsi-tiles-labels list /path/to/optimal_bvmap-v1.pmtiles
+./dump-pmtiles-labels list /path/to/optimal_bvmap-v1.pmtiles
 ```
 ```
 PMTilesEntry { tile_id: 278, offset: 0, length: 10981, is_tile: false }
@@ -90,7 +90,7 @@ PMTilesEntry { tile_id: 5654195, offset: 10981, length: 10819, is_tile: false }
 ### Dump a tile
 
 ```sh
-./dump-gsi-tiles-labels list /path/to/optimal_bvmap-v1.pmtiles 0 
+./dump-pmtiles-labels list /path/to/optimal_bvmap-v1.pmtiles 0 
 ```
 
 ```
