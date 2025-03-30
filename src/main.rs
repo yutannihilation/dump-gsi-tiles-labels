@@ -1,10 +1,7 @@
-use std::io::Read as _;
 use std::{collections::HashMap, error::Error};
 
 use clap::{Parser, Subcommand};
-use directory::parse_directory;
-use header::PMTilesHeaderV3;
-use prost::Message;
+use util::PMTilesFile;
 
 mod directory;
 mod header;
@@ -48,52 +45,23 @@ enum Commands {
     },
 }
 
-fn show_header(header: &PMTilesHeaderV3) {
-    println!("{header:#?}");
+fn show_header(file: &PMTilesFile) {
+    println!("{:#?}", file.parse_header());
 }
 
-fn show_metadata(file: &mut std::fs::File, header: &PMTilesHeaderV3) -> Result<(), Box<dyn Error>> {
-    let metadata_decoded = util::decompress(
-        file,
-        header.metadata_offset,
-        header.metadata_length as usize,
-        &header.internal_compression,
-    )?;
-
-    println!("{}", String::from_utf8(metadata_decoded)?);
+fn show_metadata(file: &mut PMTilesFile) -> Result<(), Box<dyn Error>> {
+    println!("{}", file.parse_metadata()?);
     Ok(())
 }
 
-fn list_entries(
-    file: &mut std::fs::File,
-    header: &PMTilesHeaderV3,
-    limit: usize,
-) -> Result<(), Box<dyn Error>> {
-    let root_dir_decoded = util::decompress(
-        file,
-        header.root_directory_offset,
-        header.root_directory_length as usize,
-        &header.internal_compression,
-    )?;
-
-    let (rest, entries) =
-        parse_directory(&root_dir_decoded).expect("Failed to parse root directory");
-    debug_assert!(rest.is_empty());
+fn list_entries(file: &mut PMTilesFile, limit: usize) -> Result<(), Box<dyn Error>> {
+    let entries = file.parse_root_directory()?;
 
     for e in entries.iter().take(limit) {
         println!("{e:?}");
 
         if !e.is_tile {
-            let leaf_dir_decoded = util::decompress(
-                file,
-                header.leaf_directories_offset + e.offset,
-                e.length as usize,
-                &header.internal_compression,
-            )?;
-
-            let (rest, leaf_entries) =
-                parse_directory(&leaf_dir_decoded).expect("Failed to parse leaf directory");
-            debug_assert!(rest.is_empty());
+            let leaf_entries = file.parse_leaf_directory(e.offset, e.length as usize)?;
 
             for le in leaf_entries.iter().take(limit) {
                 println!("└── {le:?}");
@@ -112,24 +80,18 @@ fn list_entries(
 }
 
 fn dump_single_tile(
-    file: &mut std::fs::File,
-    header: &PMTilesHeaderV3,
+    file: &mut PMTilesFile,
     offset: u64,
     length: usize,
     limit: usize,
 ) -> Result<(), Box<dyn Error>> {
-    if !matches!(header.tile_type, header::PMTilesTileType::Mvt) {
-        println!("Unsupported tile type: {:?}", header.tile_type);
+    let tile_type = &file.parse_header().tile_type;
+    if !matches!(tile_type, header::PMTilesTileType::Mvt) {
+        println!("Unsupported tile type: {tile_type:?}");
         return Ok(());
     }
 
-    let tile_decoded = util::decompress(
-        file,
-        header.tile_data_offset + offset,
-        length,
-        &header.tile_compression,
-    )?;
-    let tile = mvt::Tile::decode(tile_decoded.as_slice())?;
+    let tile = file.parse_tile(offset, length)?;
 
     for layer in tile.layers.iter().take(limit) {
         println!("---------------------------------------------------");
@@ -159,35 +121,23 @@ fn dump_single_tile(
     Ok(())
 }
 
-fn dump_text(
-    file: &mut std::fs::File,
-    header: &PMTilesHeaderV3,
-    limit: Option<usize>,
-) -> Result<(), Box<dyn Error>> {
+fn dump_text(file: &mut PMTilesFile, limit: Option<usize>) -> Result<(), Box<dyn Error>> {
     let limit = limit.unwrap_or(usize::MAX);
 
-    let root_dir_decoded = util::decompress(
-        file,
-        header.root_directory_offset,
-        header.root_directory_length as usize,
-        &header.internal_compression,
-    )?;
-
-    let (rest, entries) =
-        parse_directory(&root_dir_decoded).expect("Failed to parse root directory");
-    debug_assert!(rest.is_empty());
+    let entries = file.parse_root_directory()?;
 
     let mut result: HashMap<String, usize> = HashMap::new();
 
-    for e in entries.iter().take(limit) {
-        if e.is_tile {
-            let tile_decoded = util::decompress(
-                file,
-                header.tile_data_offset + e.offset,
-                e.length as usize,
-                &header.tile_compression,
-            )?;
-            let tile = mvt::Tile::decode(tile_decoded.as_slice())?;
+    for e in entries.into_iter().take(limit) {
+        let leaf_entries = if e.is_tile {
+            vec![e]
+        } else {
+            // if the entry in the root directory points to a leaf directory, parse it
+            file.parse_leaf_directory(e.offset, e.length as usize)?
+        };
+
+        for le in &leaf_entries {
+            let tile = file.parse_tile(le.offset, le.length as usize)?;
 
             for l in tile.layers {
                 for v in l.values {
@@ -199,21 +149,6 @@ fn dump_text(
                         None => {}
                     }
                 }
-            }
-        } else {
-            let leaf_dir_decoded = util::decompress(
-                file,
-                header.leaf_directories_offset + e.offset,
-                e.length as usize,
-                &header.internal_compression,
-            )?;
-
-            let (rest, leaf_entries) =
-                parse_directory(&leaf_dir_decoded).expect("Failed to parse leaf directory");
-            debug_assert!(rest.is_empty());
-
-            for le in &leaf_entries {
-                // TODO
             }
         }
     }
@@ -232,31 +167,24 @@ fn dump_text(
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Cli::parse();
     let mut file = match &args.command {
-        Commands::ShowHeader { file } => std::fs::File::open(file)?,
-        Commands::ShowMetadata { file } => std::fs::File::open(file)?,
-        Commands::List { file, .. } => std::fs::File::open(file)?,
-        Commands::Tile { file, .. } => std::fs::File::open(file)?,
-        Commands::Text { file, .. } => std::fs::File::open(file)?,
+        Commands::ShowHeader { file } => PMTilesFile::new(file)?,
+        Commands::ShowMetadata { file } => PMTilesFile::new(file)?,
+        Commands::List { file, .. } => PMTilesFile::new(file)?,
+        Commands::Tile { file, .. } => PMTilesFile::new(file)?,
+        Commands::Text { file, .. } => PMTilesFile::new(file)?,
     };
 
-    // read header
-
-    let mut header_data = vec![0u8; header::HEADER_BYTES];
-    file.read_exact(&mut header_data)?;
-    let (rest, header) = header::parse_header(&header_data).expect("Failed to parse haeder");
-    debug_assert!(rest.is_empty());
-
     match &args.command {
-        Commands::ShowHeader { .. } => show_header(&header),
-        Commands::ShowMetadata { .. } => show_metadata(&mut file, &header)?,
-        Commands::List { limit, .. } => list_entries(&mut file, &header, *limit)?,
+        Commands::ShowHeader { .. } => show_header(&file),
+        Commands::ShowMetadata { .. } => show_metadata(&mut file)?,
+        Commands::List { limit, .. } => list_entries(&mut file, *limit)?,
         Commands::Tile {
             offset,
             length,
             limit,
             ..
-        } => dump_single_tile(&mut file, &header, *offset, *length, *limit)?,
-        Commands::Text { limit, .. } => dump_text(&mut file, &header, *limit)?,
+        } => dump_single_tile(&mut file, *offset, *length, *limit)?,
+        Commands::Text { limit, .. } => dump_text(&mut file, *limit)?,
     };
 
     Ok(())
