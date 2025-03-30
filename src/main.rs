@@ -1,6 +1,8 @@
+use std::io::Write as _;
 use std::{collections::HashMap, error::Error};
 
 use clap::{Parser, Subcommand};
+use indicatif::ProgressBar;
 use util::PMTilesFile;
 
 mod directory;
@@ -42,6 +44,15 @@ enum Commands {
         file: std::path::PathBuf,
         #[arg(long)]
         limit: Option<usize>,
+        #[arg(long, short, default_value = "out.csv")]
+        output: std::path::PathBuf,
+    },
+    Char {
+        file: std::path::PathBuf,
+        #[arg(long)]
+        limit: Option<usize>,
+        #[arg(long, short, default_value = "out.csv")]
+        output: std::path::PathBuf,
     },
 }
 
@@ -121,12 +132,18 @@ fn dump_single_tile(
     Ok(())
 }
 
-fn dump_text(file: &mut PMTilesFile, limit: Option<usize>) -> Result<(), Box<dyn Error>> {
+fn dump_text<P: AsRef<std::path::Path>>(
+    file: &mut PMTilesFile,
+    output: P,
+    limit: Option<usize>,
+) -> Result<(), Box<dyn Error>> {
     let limit = limit.unwrap_or(usize::MAX);
+    let mut out = std::fs::File::create(output.as_ref())?;
 
     let entries = file.parse_root_directory()?;
 
     let mut result: HashMap<String, usize> = HashMap::new();
+    let bar = ProgressBar::new(entries.len() as u64);
 
     for e in entries.into_iter().take(limit) {
         let leaf_entries = if e.is_tile {
@@ -151,14 +168,69 @@ fn dump_text(file: &mut PMTilesFile, limit: Option<usize>) -> Result<(), Box<dyn
                 }
             }
         }
+        bar.inc(1);
     }
 
     // show result
 
     let mut sorted: Vec<(String, usize)> = result.into_iter().collect();
     sorted.sort_by(|a, b| b.1.cmp(&a.1)); // reverse sort
+    writeln!(&mut out, r#""text","count""#)?;
     for (k, v) in &sorted {
-        println!("{k}: {v} times");
+        writeln!(&mut out, r#""{k}",{v}"#)?;
+    }
+
+    Ok(())
+}
+
+fn dump_char<P: AsRef<std::path::Path>>(
+    file: &mut PMTilesFile,
+    output: P,
+    limit: Option<usize>,
+) -> Result<(), Box<dyn Error>> {
+    let limit = limit.unwrap_or(usize::MAX);
+    let mut out = std::fs::File::create(output.as_ref())?;
+
+    let entries = file.parse_root_directory()?;
+
+    let mut result: HashMap<char, usize> = HashMap::new();
+    let bar = ProgressBar::new(entries.len() as u64);
+
+    for e in entries.into_iter().take(limit) {
+        let leaf_entries = if e.is_tile {
+            vec![e]
+        } else {
+            // if the entry in the root directory points to a leaf directory, parse it
+            file.parse_leaf_directory(e.offset, e.length as usize)?
+        };
+
+        for le in &leaf_entries {
+            let tile = file.parse_tile(le.offset, le.length as usize)?;
+
+            for l in tile.layers {
+                for v in l.values {
+                    match v.string_value {
+                        Some(s) => {
+                            for c in s.chars() {
+                                let count = result.entry(c).or_insert(0);
+                                *count += 1;
+                            }
+                        }
+                        None => {}
+                    }
+                }
+            }
+        }
+        bar.inc(1);
+    }
+
+    // show result
+
+    let mut sorted: Vec<(char, usize)> = result.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1)); // reverse sort
+    writeln!(&mut out, r#""text","count""#)?;
+    for (k, v) in &sorted {
+        writeln!(&mut out, r#""{k}",{v}"#)?;
     }
 
     Ok(())
@@ -172,6 +244,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Commands::List { file, .. } => PMTilesFile::new(file)?,
         Commands::Tile { file, .. } => PMTilesFile::new(file)?,
         Commands::Text { file, .. } => PMTilesFile::new(file)?,
+        Commands::Char { file, .. } => PMTilesFile::new(file)?,
     };
 
     match &args.command {
@@ -184,7 +257,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             limit,
             ..
         } => dump_single_tile(&mut file, *offset, *length, *limit)?,
-        Commands::Text { limit, .. } => dump_text(&mut file, *limit)?,
+        Commands::Text { limit, output, .. } => dump_text(&mut file, output, *limit)?,
+        Commands::Char { limit, output, .. } => dump_char(&mut file, output, *limit)?,
     };
 
     Ok(())
